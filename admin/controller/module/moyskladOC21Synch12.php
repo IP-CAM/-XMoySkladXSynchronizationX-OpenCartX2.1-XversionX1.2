@@ -5,10 +5,7 @@ error_reporting(E_ALL ^E_NOTICE);
 class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     #TODO надо написать еще функцию по отправке заказаов 
-    protected $login;
-    protected $pass;
-
- 
+    
     public function index() {
         
         $this->load->language('module/moyskladOC21Synch12');
@@ -43,6 +40,10 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         $data['entry_order_status_to_exchange_not'] = $this->language->get('entry_order_status_to_exchange_not');
         $data['download'] = $this->language->get('download');
         $data['download_image'] = $this->language->get('download_image');
+
+        $data['text_tab_orders'] = $this->language->get('text_tab_orders');
+        $data['text_order'] = $this->language->get('text_order');
+        $data['export_order'] = $this->language->get('export_order');
 
         
  
@@ -102,6 +103,9 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         //используем ссылку в форме для загрузки картинок
         $data['action_get_images'] = $this->url->link('module/moyskladOC21Synch12/downloadImage', 'token=' . $this->session->data['token'], 'SSL');
 
+        //используем ссылку в форме для выгрузки заказов
+        $data['action_get_orders'] = $this->url->link('module/moyskladOC21Synch12/getOrders', 'token=' . $this->session->data['token'], 'SSL');
+
         $data['cancel'] = $this->url->link('extension/module', 'token=' . $this->session->data['token'], 'SSL');
         
 
@@ -128,18 +132,13 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
             $data['moyskladOC21Synch12_password'] = $this->config->get('moyskladOC21Synch12_password');
         }
 
-        //получаем данные в переменные
-        $this->login = (!empty($this->config->get('moyskladOC21Synch12_username'))) ? $this->config->get('moyskladOC21Synch12_username') : false;
-        $this->$pass = (!empty($this->config->get('moyskladOC21Synch12_password'))) ? $this->config->get('moyskladOC21Synch12_password') : false;
-
-
+       
         //получаем доступ к модели модуля и создаем таблицы в базе
         $this->load->model('tool/moyskladOC21Synch12');
         $this->model_tool_moyskladOC21Synch12->createTables();
 
         //получаем с базы количество картинок
         $data['count_image'] = $this->model_tool_moyskladOC21Synch12->countImage();
-        
 
 
         //Подключаем все статусы ордеров
@@ -181,12 +180,23 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     }
 
+    //тут храниться инфа о клиенте
+    protected function dataClient(){
+        //получаем данные в переменные
+        $mas = [
+            "login" => (!empty($this->config->get('moyskladOC21Synch12_username'))) ? $this->config->get('moyskladOC21Synch12_username') : false,
+            "pass" => (!empty($this->config->get('moyskladOC21Synch12_password'))) ? $this->config->get('moyskladOC21Synch12_password') : false
+        ];
+
+        return $mas;
+    }
+
     //вызываем метод в форме
     public function getMethodImport(){
         if(!empty($_POST['start'])){
 
                 //по клику запускаем API МойСклад для получения всего товара
-                $this->getAllProduct($position);
+                $this->getAllProduct(0);
 
                 //после завершения функции делаем редирект в модуль
                 $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
@@ -195,11 +205,11 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
   
     //получаем весь товар, что есть (рекурсия)
     public function getAllProduct($position){
+     
+        $urlProduct = "entity/product?offset=$position&limit=100";
+         //$urlProduct = "entity/product?offset=$position&limit=20";
 
-        $position = (!empty($position) ? $position : 0);
-        
-       // $urlProduct = "entity/product?offset=$position&limit=100";
-         $urlProduct = "entity/product?offset=$position&limit=20";
+
         $product = $this->getNeedInfo($urlProduct);
 
         //если дошли до конца списка то выходим из рекурсии 
@@ -215,7 +225,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
             }
 
             //вызов рекурсии  
-           // $this->getAllProduct($position+$i);
+            $this->getAllProduct($position+$i);
         
          } 
    
@@ -225,7 +235,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
     //получаем нужную информацию меняя поля URL
    public function getNeedInfo($url){
 
-    $result = "https://".$this->login.":".$this->pass."@"."online.moysklad.ru/api/remap/1.1/".$url;
+    $result = "https://".$this->dataClient()['login'].":".$this->dataClient()['pass']."@"."online.moysklad.ru/api/remap/1.1/".$url;
  
     return json_decode(file_get_contents($result), true);
     }
@@ -248,12 +258,10 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
                 "image_url"     =>  $mas["image"]["meta"]["href"]
             ];
 
-            #TODO То есть 100 элементов массива, если все гуд то удаляем 100 картинок. Так же делать подсчет  и выводить скок картинок в базе (делать с помощью MySql COUNT строк в таблице кэш картинок) и нажимать на кнопку продолжить пока все картинки не скачаются. Так же добавить в функцию по удалению товара, что бы удалялись картинки по ссылкам на хосте, что бы не было мусора и еще сделать, что бы картинки скачивались по лимиту (указывать количество которое нужно скачать из моегосклада), после скачивания удалять с базы строки скачиваемых файлов + поставить запрет, что бы больше 300 не скачивало картинок. Надо сделать кнопку по клику которой будет вызываться функция для скачивания картинок (+ как и было сказано нужно указывать количество скачиваемых картинок). После скачивания картинок (определенного количества) делаем редирект на страницу модуля + обновляем счетчик (делаем заново подсчет картинок MySql COUNT) и заново по кругу
-
             //добавляем инфу о кэше в базу
             $this->model_tool_moyskladOC21Synch12->addImagCache($image_data);
 
-            $image =  '../image/catalog/moysklad/'.$image_data["name_image"];
+            $image =  'catalog/moysklad/'.$image_data["name_image"];
 
         }else{
             $image = "";
@@ -363,11 +371,17 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
         //Ловим данные (количество картинок которые нужно скачать) и передаем функцию для скачивания
         if(!empty($_POST['count_images'])){
-            $count_images = (int)$_POST['count_images'];
+
+            //получаем доступ к модели модуля
+            $this->load->model('tool/moyskladOC21Synch12');
+            $masImage = $this->model_tool_moyskladOC21Synch12->getImage((int)$_POST['count_images']);
  
             //проверяем существует ли директория в которую будем заносить картинки, если нет то создаем
             if (empty(file_exists("../image/catalog/moysklad"))) {
                  $dir_image = mkdir("../image/catalog/moysklad", 0777);
+
+                 //даем права на создание файлов
+                 chmod("../image/catalog/moysklad", 0777);
 
                  //Если папка не создалась выводим false
                  if(empty($dir_image)){
@@ -381,45 +395,64 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
                 $dir_image = "../image/catalog/moysklad/";
             }
 
-            //проверяем создалась ли нами папка
-            if(!empty($dir_image)){
-                for($i = 0; $i < $count_images; $i++){
+            //проверяем создалась ли нами папка + есть ли картинки для скачивания
+            if(!empty($masImage) && !empty($dir_image)){
 
-                    $ch = curl_init($url);
+                for($i = 0; $i < count($masImage); $i++){
+ 
+                    $ch = curl_init($masImage[$i]['image_url']);
                     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);  
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-                    curl_setopt($ch, CURLOPT_USERPWD, $this->login.":".$this->pass);
+                    curl_setopt($ch, CURLOPT_USERPWD, $this->dataClient()['login'].":".$this->dataClient()['pass']);
                     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, array(   
                         'Accept: application/octet-stream',
                         'Content-Type: application/octet-stream')                                                           
                     );   
-                    $response = curl_exec($this->ch);
+                    $response = curl_exec($ch);
                     curl_close($ch);
-                
-                     //проверяем нету ли ошибок на стороне сервера, если нету то загружаем картинку, если есть то возвращаем false
+
+                 
+                    //проверяем нету ли ошибок на стороне сервера, если нету то загружаем картинку
                     if(!empty($response)){
-                        
-                        file_put_contents('../image/catalog/moysklad/'.$name, $response);
-                        
-                        return true;
-                    }else{
-                        return false;
-                    }
+                        file_put_contents('../image/catalog/moysklad/'.$masImage[$i]['name_image'], $response);
+                    } 
                 }
+
+                $this->model_tool_moyskladOC21Synch12->delImage(count($masImage));
+ 
+                //после завершения функции делаем редирект в модуль
+                $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
+
+                return true;
             }
         }
     }
 
     //получаем количество доступного товара в "Остатках"
-    function getQuantity($name){
-        $response = "https://".$this->login.":".$this->pass."@"."online.moysklad.ru/api/remap/1.1/entity/assortment?filter=name=".urlencode($name);    
-     
-         $jsonAnswerServer = json_decode(file_get_contents($response));
-        
+    public function getQuantity($name){
+        $jsonAnswerServer = $this->getNeedInfo("entity/assortment?filter=name=".urlencode($name)); 
+ 
         //формируем результат по столбцу "Доступно" в моем складе
-        $quantity = $jsonAnswerServer->rows[0]->quantity;
+        $quantity = $jsonAnswerServer['rows'][0]['quantity'];
         return $quantity;
     }
+
+    #TODO uuid товара нужно брать с таблицы uuid если нету там то делать запрос по имени и получить с моегосклада, если и там нету такого товара то генерить самому или отправить без ид
+
+    #TODO данные для сбора: номер ордера, организация(как то получить ее имя), created(время создания заказа), агент, position(пример с позициями(количество, цена)), uuid товара, аккаунт ид(если можно где то достать), oc_order_product (quantity,price), имя товара
+
+    //выгружаем все заказы в мойсклад
+    public function getOrders(){
+        //получаем из настроек какие ордера подгружать
+        $order_status = $this->config->get('moyskladOC21Synch12_order_status_to_exchange');
+
+        //по клику и выбраном статусе загружаем заказы в мойсклад
+        if(!empty($_POST['get_orders']) && !empty($order_status)){
+             
+        }
+    }
+
+
 }
 ?>

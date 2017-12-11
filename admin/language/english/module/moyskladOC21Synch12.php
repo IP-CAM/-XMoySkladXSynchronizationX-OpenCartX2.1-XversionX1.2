@@ -20,13 +20,16 @@ $_['import_button']		= 'Import';
 $_['download']			= 'download';
 $_['download_image']	= 'Count images';
 
-
-
-
-
-//Status order
+//Orders
 $_['entry_order_status_to_exchange']		= 'Orders status to exchange';
 $_['entry_order_status_to_exchange_not']	= '- don not use -';
+$_['text_tab_orders']						= 'Orders';
+$_['text_order']							= 'Export orders in МойСклад';
+$_['export_order']							= 'Export';
+
+
+
+
 
 //Author
 $_['text_tab_author']	= 'Author';

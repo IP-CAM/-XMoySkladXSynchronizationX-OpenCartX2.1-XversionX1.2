@@ -75,4 +75,25 @@ class ModelToolMoyskladOC21Synch12 extends Model {
       return $rewards->num_rows;
 
      }
+
+     //получаем с базы ссылку и имя картинки по заданному количеству
+     public function getImage($data){
+        $query = $this->db->query('SELECT name_image, image_url FROM `'.DB_PREFIX.'cache_image`  ORDER BY name_image LIMIT '.htmlspecialchars($data));
+        return $query->rows;
+     }
+
+     //удаляем с базы скачанные картинки
+     public function delImage($data){
+        $this->db->query('DELETE  FROM `'.DB_PREFIX.'cache_image`  ORDER BY name_image LIMIT '.htmlspecialchars($data));
+
+        return true;
+    }
+
+    #TODO тут надо заюзать JOIN c таблицей oc_order_product по ордеру_ид, что бы получить нужную инфу
+    //получаем с базы нужную инфу ордеров
+    public function getInfoOrder($data){
+        $query = $this->db->query('SELECT order_id,date_added,firstname,lastname  FROM `'.DB_PREFIX.'order`
+             WHERE order_status_id = "'.(int)$data.'" ');
+        return $query->rows;
+    }
 }

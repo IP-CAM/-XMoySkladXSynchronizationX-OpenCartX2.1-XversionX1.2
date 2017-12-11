@@ -12,7 +12,7 @@
     border-top: 1px solid #DDDDDD;
     border-left: 1px solid #DDDDDD;
     border-right: 1px solid #DDDDDD;
-    background: #DBDBDB url(view/image/tab.png) repeat-x;
+    background: #DBDBDB url(../image/tab.png) repeat-x;
     padding: 7px 15px 6px 15px;
     float: left;
     font-family: Arial, Helvetica, sans-serif;
@@ -107,6 +107,11 @@
   div#tab-import table {
     margin: 10px;
 }
+
+  div#tab-orders table {
+    margin: 10px;
+}
+
 
 /*Анимация загрузки товара*/
 .ball {

@@ -3,7 +3,6 @@ ini_set('display_errors',1);
 error_reporting(E_ALL ^E_NOTICE);
 
 ?>
- 
 <div id="content" style="margin-left:50px;">
   <div class="page-header">
     <div class="container-fluid">
@@ -28,11 +27,12 @@ error_reporting(E_ALL ^E_NOTICE);
             <div id="tabs" class="htabs">
               <a href="#tab-setting"><?php echo $text_tab_setting; ?></a>  
               <a href="#tab-import"><?php echo $text_tab_import; ?></a>
+              <a href="#tab-orders"><?php echo $text_tab_orders; ?></a>
               <a href="#tab-author"><?php echo $text_tab_author; ?></a>
             </div>
         </div>
          <div id="tab-setting">
-            <form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data" id="form-category" class="form-horizontal">
+            <form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data" class="form-horizontal">
                <table class="form">
                     <tr>
                       <td><?php echo $entry_username; ?></td>
@@ -60,7 +60,7 @@ error_reporting(E_ALL ^E_NOTICE);
             <table>
               <tr>
                 <td>
-                  <form action="<?php echo $action_import; ?>" method="post" enctype="multipart/form-data" id="form-category" class="form-inline">
+                  <form action="<?php echo $action_import; ?>" method="post" enctype="multipart/form-data"  class="form-inline">
                   <div class="form-group">
                     <span><?php echo $import_text; ?></span>
                   </div>
@@ -70,7 +70,7 @@ error_reporting(E_ALL ^E_NOTICE);
               </tr>
              <tr>
                 <td>
-               <form action="<?php echo $action_get_images; ?>" method="post" enctype="multipart/form-data" id="form-category" class="form-inline">
+               <form action="<?php echo $action_get_images; ?>" method="post" enctype="multipart/form-data" class="form-inline">
                 <div class="form-group">
                 <span style="margin-right: 30px;"><?php echo $download_image.": ". $count_image; ?></span>
                 </div>
@@ -82,6 +82,20 @@ error_reporting(E_ALL ^E_NOTICE);
               </td>
              </tr>    
           </table> 
+        </div>
+        <div id="tab-orders">
+          <table>
+            <tr>
+              <td>
+                <form action="<?php echo $action_get_orders; ?>" method="post" enctype="multipart/form-data" class="form-inline">
+                  <div class="form-group">
+                  <span style="margin-right: 30px;"><?php echo $text_order; ?></span>
+                  </div>
+                  <button type="submit" name="get_orders" class="btn btn-primary" style="margin-left: 30px;" onclick="anime()"><?php echo $export_order;?></button>
+                </form>
+              </td>
+            </tr>
+          </table>
         </div>
         <div id="tab-author">
             <table>

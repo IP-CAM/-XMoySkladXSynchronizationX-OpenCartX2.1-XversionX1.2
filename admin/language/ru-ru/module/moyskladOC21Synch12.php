@@ -21,9 +21,12 @@ $_['download_image']	= 'Количество изображений';
 $_['download']			= 'Загрузить';
 
 
-//Status order
+//Orders
 $_['entry_order_status_to_exchange']		= 'Выгружать заказы со статусом';
 $_['entry_order_status_to_exchange_not']	= '- не использовать -';
+$_['text_tab_orders']						= 'Заказы';
+$_['text_order']							= 'Экспорт заказов в МойСклад';
+$_['export_order']							= 'Экспорт';
 
 //Author
 $_['text_tab_author']	= 'Автор';
