@@ -106,13 +106,7 @@ class ModelToolMoyskladOC21Synch12 extends Model {
 
         return true;
     }
-
-    //получаем с базы нужную инфу ордеров
-    public function getInfoOrder($data){
-        $query = $this->db->query('SELECT oc_order.order_id,date_added,firstname,lastname,email,telephone,payment_address_1,shipping_address_1, oc_order_product.product_id,name,quantity,price,uuid_id FROM `'.DB_PREFIX.'order` LEFT JOIN `'.DB_PREFIX.'order_product` ON oc_order.order_id=oc_order_product.order_id LEFT JOIN `'.DB_PREFIX.'uuid` ON oc_uuid.product_id=oc_order_product.product_id WHERE oc_order.order_status_id = "'.(int)$data.'" ');
-        return $query->rows;
-    }
-
+ 
     //тестовый запрос
     public function statusOrder($data){
         $query = $this->db->query("SELECT order_id FROM `" . DB_PREFIX . "order` WHERE `order_status_id` = " . $data . "");

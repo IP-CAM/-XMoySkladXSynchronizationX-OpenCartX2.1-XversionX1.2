@@ -4,7 +4,8 @@ error_reporting(E_ALL ^E_NOTICE);
 
 class ControllermodulemoyskladOC21Synch12 extends Controller {
 
-    #TODO надо написать еще функцию по отправке заказаов 
+    //храним url  МойСклад API
+    public $urlAPI = "https://online.moysklad.ru/api/remap/1.1/";
 
     public function index() {
         
@@ -47,8 +48,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         $data['text_tab_orders'] = $this->language->get('text_tab_orders');
         $data['text_order'] = $this->language->get('text_order');
         $data['export_order'] = $this->language->get('export_order');
-
-        
+ 
  
         if (isset($this->error['warning'])) {
             $data['error_warning'] = $this->error['warning'];
@@ -210,9 +210,9 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
   
     //получаем весь товар, что есть (рекурсия)
     public function getAllProduct($position){
-        $urlProduct = "entity/product?offset=$position&limit=100";
-        $products = $this->getNeedInfo($urlProduct);
-
+        $urlProduct = $this->urlAPI."entity/product?offset=$position&limit=100";
+        $products = $this->restAPIMoySklad($urlProduct,0,"GET");
+         
         //если дошли до конца списка то выходим из рекурсии 
         if(!empty($products["rows"])){
             
@@ -235,19 +235,10 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
             $this->getAllProduct($position+$i);
         
         }
+        
 
         return true; 
     }
-    
-    
-    //получаем нужную информацию меняя поля URL
-   public function getNeedInfo($url){
-
-    $result = "https://".$this->dataClient()['login'].":".$this->dataClient()['pass']."@"."online.moysklad.ru/api/remap/1.1/".$url;
- 
-    return json_decode(file_get_contents($result), true);
-    }
-
 
     //делаем поиск в таблице uuid  на id  товара.
     //Если нету то добавляем товар если есть id  товара то обновляем.
@@ -332,8 +323,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
  
 
         ];
-       
-        
+
         //если нашли id товара то update, если нет то insert
         if(!empty($findUUID)){
             $this->updateProduct($findUUID,$data);
@@ -446,27 +436,34 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     //получаем количество доступного товара в "Остатках"
     public function getQuantity($name){
-        $jsonAnswerServer = $this->getNeedInfo("entity/assortment?filter=name=".urlencode($name)); 
- 
+        $jsonAnswerServer = $this->restAPIMoySklad($this->urlAPI."entity/assortment?filter=name=".urlencode($name),0,"GET");
+
         //формируем результат по столбцу "Доступно" в моем складе
         $quantity = $jsonAnswerServer['rows'][0]['quantity'];
         return $quantity;
+ 
     }
-
-    #TODO uuid товара нужно брать с таблицы uuid если нету там то делать запрос по имени и получить с моегосклада, если и там нету такого товара то генерить самому или отправить без ид
-
-    #TODO данные для сбора: номер ордера, организация(как то получить ее имя), created(время создания заказа), агент, position(пример с позициями(количество, цена)), uuid товара, аккаунт ид(если можно где то достать), oc_order_product (quantity,price), имя товара
-
-    #TODO можно получить все данные по ордеру и сформировать, а дальше создать массив по товарам которые в этом ордере и склееить с основным массивом
+ 
 
     //выгружаем все заказы в мойсклад
     public function getOrders(){
-        $this->load->model('sale/order');
-        //получаем доступ к модели модуля (#TODO удалить когда перенесу в условие так как там уже есть)
-        $this->load->model('tool/moyskladOC21Synch12');
-
         //получаем из настроек какие ордера подгружать
         $order_status = $this->config->get('moyskladOC21Synch12_order_status_to_exchange');
+        
+        //по выбраном статусе загружаем заказы в мойсклад
+        if(!empty($order_status)){
+ 
+            //получаем доступ к модели модуля
+            $this->load->model('tool/moyskladOC21Synch12');
+
+            //удаляем с базы кэш контрагентов
+            $this->model_tool_moyskladOC21Synch12->delContrAgent();
+
+            //запуск на создание кэша контрагентов
+            $this->addContrAgentCache(0);
+
+            $this->load->model('sale/order');
+        
         $orders = $this->model_tool_moyskladOC21Synch12->statusOrder($order_status);
 
         //массив который содержит информацию о заказе для моегосклада
@@ -490,7 +487,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
             //формируем массив для создания заказа
             $info_order_mas =   [
-               "name"           =>  $_SERVER['HTTP_HOST']."#".$order['order_id'],
+               "name"           =>  $order['order_id']."#".$_SERVER['HTTP_HOST'],
                "organization"   =>  [
                     "meta"  =>  [
                         "href"      =>  $this->getOrganization(0), //получаем ссылку на организацию
@@ -503,7 +500,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
                 "vatEnabled"    =>  false,
                 "agent"         =>  [
                     "meta"  =>  [
-                        "href"  =>  (!empty($urlSearchAgent)) ? $urlSearchAgent : $this->contrAgent(json_encode($new_contr_agent)), //получаем ссылку на контрагента 
+                        "href"  =>  (!empty($urlSearchAgent['url'])) ? $urlSearchAgent['url'] : $this->contrAgent(json_encode($new_contr_agent)), //получаем ссылку на контрагента 
                         "type"      =>  "counterparty",
                         "mediaType" =>  "application/json"     
                     ],    
@@ -512,78 +509,81 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
             //формируем массив товара в 1 ордере
             $products = $this->model_sale_order->getOrderProducts($orders_data['order_id']);
-
-             foreach ($products as $product) {
-
-                var_dump($product['product_id']);
-                 $info_order_mas["positions"][]  =  [
-                   "quantity"   =>  $product['quantity'],
-                   "price"      =>  $product['price'],
+ 
+            foreach ($products as $product) {
+                $info_order_mas["positions"][]  =  [
+                   "quantity"   =>  (float)$product['quantity'],
+                   "price"      =>  (float)$product['price'] * 100, //цену передаем в копейках
                    "assortment" =>  [
                         "meta"  =>  [
-                            "href"      => $this->model_tool_moyskladOC21Synch12->modelSearchUUIDUrl($product['product_id']), 
+                            "href"      => $this->model_tool_moyskladOC21Synch12->modelSearchUUIDUrl($product['product_id'])['url'], 
                             "type"      =>  "product",
                             "mediaType" =>  "application/json"
                         ],
                     ], 
                 ];
-
+ 
             }
 
-            #TODO  тут надо вызывать функцию по отправке заказов
-            var_dump($info_order_mas);
-
+            //создаем заказ
+            $this->setOrders(json_encode($info_order_mas));
+ 
+        }
         }
 
-         
-
-         
-
-
-        
-
-
-        //по клику и выбраном статусе загружаем заказы в мойсклад
-        if(!empty($_POST['get_orders']) && !empty($order_status)){
-            //получаем доступ к модели модуля
-            //$this->load->model('tool/moyskladOC21Synch12');
-
-            //удаляем с базы кэш контрагентов
-            //$this->model_tool_moyskladOC21Synch12->delContrAgent();
-
-            //запуск на создание кэша контрагентов
-            //$this->addContrAgentCache(0);
-
-            #TODO заюзать внутри этого условия все
-
-        }
+        //после завершения функции делаем редирект в модуль
+        $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
 
         return true;
     }
-  
-    #TODO тут надо переделать функцию, что бы один курл был, а не несколько, а в параметры передавать ссылки
-    #TODO надо еще в моделе поудалять ненужные функции
 
+    //создаем заказ в мойсклад
+    public function setOrders($data){
+        $url = $this->urlAPI."entity/customerorder";
+        $order = $this->restAPIMoySklad($url, $data, "POST");
+ 
+       return true;
 
+    }
+    
     //создание контрагента при выгрузке заказов
     public function contrAgent($data){
-        $url = "https://online.moysklad.ru/api/remap/1.1/entity/counterparty";
+        
+        $url = $this->urlAPI."entity/counterparty";
+        //возвращаем ссылку на контрагента (для подключения его в заказ)
+        $json_contr_agent_id = $this->restAPIMoySklad($url,$data,"POST"); 
+         return $json_contr_agent_id['meta']['href'];
+
+    }
+
+    //restAPI моего склада
+    public function restAPIMoySklad($url,$data,$method){
+        
         $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        //Делаем проверку, если данные есть для отправки то отправляем.
+        if(!empty($data)){
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        }
+
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);  
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_USERPWD, $this->dataClient()['login'].":".$this->dataClient()['pass']);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+
+        if(!empty($data)){
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json',
             'Content-Length: ' . strlen($data))                                                                       
         );  
+        }else{
+          curl_setopt($ch, CURLOPT_HTTPHEADER,'Content-Type: application/json');    
+        }
+
         $response = curl_exec($ch);
         curl_close($ch);
         
-        //возвращаем ссылку на контрагента (для подключения его в заказ)
-        $json_contr_agent_id = json_decode($response); 
-        return $json_contr_agent_id->meta->href;
+        //true  ставим, что бы получить массив, а не объект
+        return json_decode($response, true);
     }
 
     //создаем кэш контрагентов
@@ -592,9 +592,9 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         //получаем доступ к модели модуля
         $this->load->model('tool/moyskladOC21Synch12');
 
-        $urlContrAgent = "entity/counterparty?offset=$position&limit=100";
+        $urlContrAgent = $this->urlAPI."entity/counterparty?offset=$position&limit=100";
  
-        $contrAgents = $this->getNeedInfo($urlContrAgent);
+        $contrAgents = $this->restAPIMoySklad($urlContrAgent,0,"GET"); 
 
         //если дошли до конца списка то выходим из рекурсии 
         if(!empty($contrAgents["rows"])){
@@ -628,8 +628,8 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     //получаем первую Организацию (Юр. Лицо)
     public function getOrganization($position){
-        $urlOrgan = "entity/organization?offset=$position&limit=1";
-        $organization = $this->getNeedInfo($urlOrgan);
+        $urlOrgan = $this->urlAPI."entity/organization?offset=$position&limit=1";
+        $organization = $this->restAPIMoySklad($urlOrgan,0,"GET");
 
         //тут работаем без цикла так как получаем только 1 организацию
         return $organization['rows'][0]['meta']['href'];
