@@ -5,7 +5,7 @@ error_reporting(E_ALL ^E_NOTICE);
 class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     #TODO надо написать еще функцию по отправке заказаов 
-    
+
     public function index() {
         
         $this->load->language('module/moyskladOC21Synch12');
@@ -21,6 +21,9 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         if (($this->request->server['REQUEST_METHOD'] == 'POST') && $this->validate()) {
             
             $this->model_setting_setting->editSetting('moyskladOC21Synch12', $this->request->post);
+
+            //после завершения функции делаем редирект в модуль
+                $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
 
         }
 
@@ -195,40 +198,45 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
     public function getMethodImport(){
         if(!empty($_POST['start'])){
 
-                //по клику запускаем API МойСклад для получения всего товара
-                $this->getAllProduct(0);
+            //по клику запускаем API МойСклад для получения всего товара
+            $this->getAllProduct(0);
 
-                //после завершения функции делаем редирект в модуль
-                $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
-            }
+            //после завершения функции делаем редирект в модуль
+            $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
+        }
+
+        return true;
     }
   
     //получаем весь товар, что есть (рекурсия)
     public function getAllProduct($position){
-     
         $urlProduct = "entity/product?offset=$position&limit=100";
-         //$urlProduct = "entity/product?offset=$position&limit=20";
-
-
-        $product = $this->getNeedInfo($urlProduct);
+        $products = $this->getNeedInfo($urlProduct);
 
         //если дошли до конца списка то выходим из рекурсии 
-        if(!empty($product["rows"])){
+        if(!empty($products["rows"])){
+            
+            $i = 0;
+            $data_product = [];
 
-            for($i=0; $i<100; $i++){
+            foreach($products["rows"] as $product){
+                
                 //делаем провекру, что бы товар был с именем
-                if(!empty($product["rows"][$i]["name"])){
- 
+                if(!empty($product["name"])){
+                    
                     //передаем uuid для проверки существует ли такой uuid в базе или нет
-                    $this->searchUUID($product["rows"][$i]["id"],$product["rows"][$i]);
+                    $this->searchUUID($product["id"],$product);
                 }
+
+                ++$i;
             }
 
             //вызов рекурсии  
             $this->getAllProduct($position+$i);
         
-         } 
-   
+        }
+
+        return true; 
     }
     
     
@@ -314,8 +322,12 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
                     'meta_keyword'  =>  "",
                 ],
             ],
+            'product_store'     =>[
+                'store_id'          => $this->config->get('config_store_id'),
+            ],
             
             'uuid'                  =>  $uuid,
+            'uuid_url'              =>  $mas['meta']['href'],
             'keyword'               =>  "",
  
 
@@ -340,6 +352,8 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         //получаем доступ к модели модуля
         $this->load->model('tool/moyskladOC21Synch12');
         $this->model_tool_moyskladOC21Synch12->updateProduct($id,$data);
+
+        return true;
     }
     
     //метод по добавлению нового товара
@@ -356,7 +370,8 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         if(!empty($product_id)){
             $data = [
                'product_id' =>  $product_id,
-               'uuid'       =>  $data['uuid'],   
+               'uuid'       =>  $data['uuid'],
+               'url'        =>  $data['uuid_url'],   
             ];
             
           //передаем массив в модель модуля  
@@ -442,15 +457,182 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     #TODO данные для сбора: номер ордера, организация(как то получить ее имя), created(время создания заказа), агент, position(пример с позициями(количество, цена)), uuid товара, аккаунт ид(если можно где то достать), oc_order_product (quantity,price), имя товара
 
+    #TODO можно получить все данные по ордеру и сформировать, а дальше создать массив по товарам которые в этом ордере и склееить с основным массивом
+
     //выгружаем все заказы в мойсклад
     public function getOrders(){
+        $this->load->model('sale/order');
+        //получаем доступ к модели модуля (#TODO удалить когда перенесу в условие так как там уже есть)
+        $this->load->model('tool/moyskladOC21Synch12');
+
         //получаем из настроек какие ордера подгружать
         $order_status = $this->config->get('moyskladOC21Synch12_order_status_to_exchange');
+        $orders = $this->model_tool_moyskladOC21Synch12->statusOrder($order_status);
+
+        //массив который содержит информацию о заказе для моегосклада
+        $info_order_mas = [];
+        
+        foreach ($orders as $orders_data){
+            //получаем по ордер ид всю инфу о ордере
+            $order = $this->model_sale_order->getOrder($orders_data['order_id']);
+
+            //получаем ссылку на контрагента
+            $urlSearchAgent = $this->model_tool_moyskladOC21Synch12->searchContrAgent($order['firstname']." ".$order['lastname']); 
+
+            //формируем нужный нам массив для создания контрагента
+            $new_contr_agent = [
+                "name"          =>  $order['firstname']." ".$order['lastname'],
+                "email"         =>  (!empty($order['email'])) ? $order['email'] : "",
+                "phone"         =>  (!empty($order['telephone'])) ? $order['telephone'] : "",
+                "actualAddress" =>  (!empty($order['payment_address_1'])) ? $order['payment_address_1'] : "",
+                "legalAddress"  =>  (!empty($order['shipping_address_1'])) ? $order['shipping_address_1'] : "",
+            ];
+
+            //формируем массив для создания заказа
+            $info_order_mas =   [
+               "name"           =>  $_SERVER['HTTP_HOST']."#".$order['order_id'],
+               "organization"   =>  [
+                    "meta"  =>  [
+                        "href"      =>  $this->getOrganization(0), //получаем ссылку на организацию
+                        "type"      =>  "organization",
+                        "mediaType" =>  "application/json"      
+                    ],     
+                ],
+                "moment"        =>  $order['date_added'],
+                "applicable"    =>  false,
+                "vatEnabled"    =>  false,
+                "agent"         =>  [
+                    "meta"  =>  [
+                        "href"  =>  (!empty($urlSearchAgent)) ? $urlSearchAgent : $this->contrAgent(json_encode($new_contr_agent)), //получаем ссылку на контрагента 
+                        "type"      =>  "counterparty",
+                        "mediaType" =>  "application/json"     
+                    ],    
+                ],
+            ];
+
+            //формируем массив товара в 1 ордере
+            $products = $this->model_sale_order->getOrderProducts($orders_data['order_id']);
+
+             foreach ($products as $product) {
+
+                var_dump($product['product_id']);
+                 $info_order_mas["positions"][]  =  [
+                   "quantity"   =>  $product['quantity'],
+                   "price"      =>  $product['price'],
+                   "assortment" =>  [
+                        "meta"  =>  [
+                            "href"      => $this->model_tool_moyskladOC21Synch12->modelSearchUUIDUrl($product['product_id']), 
+                            "type"      =>  "product",
+                            "mediaType" =>  "application/json"
+                        ],
+                    ], 
+                ];
+
+            }
+
+            #TODO  тут надо вызывать функцию по отправке заказов
+            var_dump($info_order_mas);
+
+        }
+
+         
+
+         
+
+
+        
+
 
         //по клику и выбраном статусе загружаем заказы в мойсклад
         if(!empty($_POST['get_orders']) && !empty($order_status)){
-             
+            //получаем доступ к модели модуля
+            //$this->load->model('tool/moyskladOC21Synch12');
+
+            //удаляем с базы кэш контрагентов
+            //$this->model_tool_moyskladOC21Synch12->delContrAgent();
+
+            //запуск на создание кэша контрагентов
+            //$this->addContrAgentCache(0);
+
+            #TODO заюзать внутри этого условия все
+
         }
+
+        return true;
+    }
+  
+    #TODO тут надо переделать функцию, что бы один курл был, а не несколько, а в параметры передавать ссылки
+    #TODO надо еще в моделе поудалять ненужные функции
+
+
+    //создание контрагента при выгрузке заказов
+    public function contrAgent($data){
+        $url = "https://online.moysklad.ru/api/remap/1.1/entity/counterparty";
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);  
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_USERPWD, $this->dataClient()['login'].":".$this->dataClient()['pass']);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($data))                                                                       
+        );  
+        $response = curl_exec($ch);
+        curl_close($ch);
+        
+        //возвращаем ссылку на контрагента (для подключения его в заказ)
+        $json_contr_agent_id = json_decode($response); 
+        return $json_contr_agent_id->meta->href;
+    }
+
+    //создаем кэш контрагентов
+    public function addContrAgentCache($position){
+
+        //получаем доступ к модели модуля
+        $this->load->model('tool/moyskladOC21Synch12');
+
+        $urlContrAgent = "entity/counterparty?offset=$position&limit=100";
+ 
+        $contrAgents = $this->getNeedInfo($urlContrAgent);
+
+        //если дошли до конца списка то выходим из рекурсии 
+        if(!empty($contrAgents["rows"])){
+
+            $i = 0;
+ 
+            $data_contr = [];
+            foreach($contrAgents["rows"] as $agent){
+                //делаем провекру, что бы контрагент был ссылкой
+                if(!empty($agent["meta"]["href"])){
+
+                    //создаем массив который будет хранить данные кэша
+                    $data_contr = [
+                        "name"  =>  $agent["name"],
+                        "url"   =>  $agent["meta"]["href"],
+                    ];
+ 
+                    //создаем кэш контрагентов
+                    $this->model_tool_moyskladOC21Synch12->addCacheContrAgent($data_contr);
+ 
+                }
+                ++$i;
+            }
+            
+            //вызов рекурсии  
+            $this->addContrAgentCache($position+$i);
+        }
+
+        return true; 
+    }
+
+    //получаем первую Организацию (Юр. Лицо)
+    public function getOrganization($position){
+        $urlOrgan = "entity/organization?offset=$position&limit=1";
+        $organization = $this->getNeedInfo($urlOrgan);
+
+        //тут работаем без цикла так как получаем только 1 организацию
+        return $organization['rows'][0]['meta']['href'];
     }
 
 

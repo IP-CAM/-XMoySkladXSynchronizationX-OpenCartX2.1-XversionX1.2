@@ -32,7 +32,7 @@ error_reporting(E_ALL ^E_NOTICE);
             </div>
         </div>
          <div id="tab-setting">
-            <form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data" class="form-horizontal">
+            <form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data" id="form-category" class="form-horizontal">
                <table class="form">
                     <tr>
                       <td><?php echo $entry_username; ?></td>

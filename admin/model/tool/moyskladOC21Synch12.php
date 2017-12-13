@@ -4,7 +4,7 @@ class ModelToolMoyskladOC21Synch12 extends Model {
 
     //При инстализации модуля создаем таблицы
     public function createTables(){
-        $sql =array();
+        $sql = array();
         
         $sql[] = "
         
@@ -21,7 +21,18 @@ class ModelToolMoyskladOC21Synch12 extends Model {
             CREATE TABLE IF NOT EXISTS `".DB_PREFIX."uuid` (
              `product_id` int(255) NOT NULL,
              `uuid_id` varchar(255) NOT NULL,
+             `url` varchar(255) NOT NULL,
               PRIMARY KEY (`product_id`)
+            ) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
+
+        ";
+
+        $sql[] = "
+                        
+            CREATE TABLE IF NOT EXISTS `".DB_PREFIX."contrAgent_cache` (
+             `name` varchar(255) NOT NULL,
+             `url` varchar(255) NOT NULL,
+              PRIMARY KEY (`url`)
             ) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
 
         ";
@@ -38,11 +49,18 @@ class ModelToolMoyskladOC21Synch12 extends Model {
         $query = $this->db->query("SELECT product_id FROM `".DB_PREFIX."uuid` WHERE uuid_id = '$uuid' ");
         return $query->row;
     }
+
+    //функция для поиска в таблице uuid ссылку на товар
+    public function modelSearchUUIDUrl($product_id){
+        $query = $this->db->query("SELECT url FROM `".DB_PREFIX."uuid` WHERE product_id = '$product_id' ");
+        return $query->row;
+    }
+
     
     //после удачного добавления товара в базу, заносим id  товара и uuid товара с моего 
     //склада в таблицу uuid для проверок существования товара
     public function modelInsertUUID($data){
-      $this->db->query('INSERT INTO `'.DB_PREFIX.'uuid` SET product_id = ' . (int)$data["product_id"] . ', `uuid_id` = "' . $data["uuid"] . '"');  
+      $this->db->query('INSERT INTO `'.DB_PREFIX.'uuid` SET product_id = ' . (int)$data["product_id"] . ', `uuid_id` = "' . $data["uuid"] . '", `url` = "' . $data["url"] . '"');  
       return true;
     }
  
@@ -89,11 +107,35 @@ class ModelToolMoyskladOC21Synch12 extends Model {
         return true;
     }
 
-    #TODO тут надо заюзать JOIN c таблицей oc_order_product по ордеру_ид, что бы получить нужную инфу
     //получаем с базы нужную инфу ордеров
     public function getInfoOrder($data){
-        $query = $this->db->query('SELECT order_id,date_added,firstname,lastname  FROM `'.DB_PREFIX.'order`
-             WHERE order_status_id = "'.(int)$data.'" ');
+        $query = $this->db->query('SELECT oc_order.order_id,date_added,firstname,lastname,email,telephone,payment_address_1,shipping_address_1, oc_order_product.product_id,name,quantity,price,uuid_id FROM `'.DB_PREFIX.'order` LEFT JOIN `'.DB_PREFIX.'order_product` ON oc_order.order_id=oc_order_product.order_id LEFT JOIN `'.DB_PREFIX.'uuid` ON oc_uuid.product_id=oc_order_product.product_id WHERE oc_order.order_status_id = "'.(int)$data.'" ');
         return $query->rows;
+    }
+
+    //тестовый запрос
+    public function statusOrder($data){
+        $query = $this->db->query("SELECT order_id FROM `" . DB_PREFIX . "order` WHERE `order_status_id` = " . $data . "");
+
+       return $query->rows;
+    }
+
+    //заносим в базу контрагентов
+    public function addCacheContrAgent($data){
+        $this->db->query('INSERT INTO `'.DB_PREFIX.'contrAgent_cache` SET name = "' . $data["name"] . '", url = "' . $data["url"] . '"');  
+      return true;
+    }
+
+    //удаляем с базы кэш контрагент
+     public function delContrAgent(){
+        $this->db->query('DELETE  FROM `'.DB_PREFIX.'contrAgent_cache`');
+
+        return true;
+    }
+
+    //функция по поиску контрагента
+    public function searchContrAgent($data){
+        $query = $this->db->query('SELECT url FROM `'.DB_PREFIX.'contrAgent_cache` WHERE name = "'.$data.'"');
+        return $query->row;
     }
 }
