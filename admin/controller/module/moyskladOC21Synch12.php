@@ -472,13 +472,14 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         foreach ($orders as $orders_data){
             //получаем по ордер ид всю инфу о ордере
             $order = $this->model_sale_order->getOrder($orders_data['order_id']);
+            $name_client = (!empty($order['firstname']) ? $order['firstname'] : ""." ".(!empty($order['lastname']) ? $order['lastname'] : "";
 
             //получаем ссылку на контрагента
-            $urlSearchAgent = $this->model_tool_moyskladOC21Synch12->searchContrAgent($order['firstname']." ".$order['lastname']); 
+            $urlSearchAgent = $this->model_tool_moyskladOC21Synch12->searchContrAgent(htmlspecialchars($name_client)); 
 
             //формируем нужный нам массив для создания контрагента
             $new_contr_agent = [
-                "name"          =>  $order['firstname']." ".$order['lastname'],
+                "name"          =>  $name_client,
                 "email"         =>  (!empty($order['email'])) ? $order['email'] : "",
                 "phone"         =>  (!empty($order['telephone'])) ? $order['telephone'] : "",
                 "actualAddress" =>  (!empty($order['payment_address_1'])) ? $order['payment_address_1'] : "",
@@ -576,7 +577,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
             'Content-Length: ' . strlen($data))                                                                       
         );  
         }else{
-          curl_setopt($ch, CURLOPT_HTTPHEADER,'Content-Type: application/json');    
+          curl_setopt($ch, CURLOPT_HTTPHEADER,array('Content-Type: application/json'));    
         }
 
         $response = curl_exec($ch);
@@ -608,7 +609,7 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
                     //создаем массив который будет хранить данные кэша
                     $data_contr = [
-                        "name"  =>  $agent["name"],
+                        "name"  =>  htmlspecialchars($agent['name']),
                         "url"   =>  $agent["meta"]["href"],
                     ];
  
