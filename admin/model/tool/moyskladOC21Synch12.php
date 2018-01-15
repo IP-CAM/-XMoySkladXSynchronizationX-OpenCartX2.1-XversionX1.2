@@ -38,6 +38,16 @@ class ModelToolMoyskladOC21Synch12 extends Model {
 
         ";
 
+        $sql[] = "
+                        
+            CREATE TABLE IF NOT EXISTS `".DB_PREFIX."quantity_cache` (
+             `uuid` varchar(255) NOT NULL,
+             `name` varchar(255) NOT NULL,
+              PRIMARY KEY (`uuid`)
+            ) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
+
+        ";
+
 
         foreach( $sql as $q ){
              $this->db->query( $q );
@@ -64,11 +74,11 @@ class ModelToolMoyskladOC21Synch12 extends Model {
       $this->db->query('INSERT INTO `'.DB_PREFIX.'uuid` SET product_id = ' . (int)$data["product_id"] . ', `uuid_id` = "' . $data["uuid"] . '", `url` = "' . $data["url"] . '"');  
       return true;
     }
+
  
-    
     //обновляем информацию о товаре
     public function updateProduct($id,$data){
-        $this->db->query("UPDATE " . DB_PREFIX . "product SET  quantity = '" . (int)$data['quantity'] . "',  price = '" . (float)$data['price'] . "', weight = '" . (float)$data['weight'] . "',  date_modified = NOW() WHERE product_id = '" . (int)$id['product_id'] . "'");
+        $this->db->query("UPDATE " . DB_PREFIX . "product SET  quantity = '" . (int)$data['quantity'] . "',  price = '" . (float)$data['price'] . "', weight = '" . (float)$data['weight'] . "',  date_modified = NOW() WHERE product_id = '" . (int)$id . "'");
 
             if (isset($data['image'])) {
     $this->db->query("UPDATE " . DB_PREFIX . "product SET image = '" . $this->db->escape($data['image']) . "' WHERE product_id = '" . (int)$id['product_id'] . "'");
@@ -80,6 +90,14 @@ class ModelToolMoyskladOC21Synch12 extends Model {
             
              return true;
      }
+
+     //обновляем количество товара
+    public function updateProductQuantity($id,$quantity){
+
+        $this->db->query("UPDATE " . DB_PREFIX . "product SET  quantity = '" . (int)$quantity. "'  WHERE product_id = '" . (int)$id . "'");
+
+        return true;
+    }
 
      //заносим в базу кэш картинки
      public function  addImagCache($data){
@@ -107,8 +125,32 @@ class ModelToolMoyskladOC21Synch12 extends Model {
 
         return true;
     }
+
+    //получаем uuid и имена товаров для того что бы получить количество
+    public function getquantityCache(){
+        $query = $this->db->query("SELECT uuid,name FROM `" . DB_PREFIX . "quantity_cache`");
+
+       return $query->rows;
+    }
+
+
+    //заносим кэш остатки по товару
+    public function setquantityCache($data){
+      $this->db->query('INSERT INTO `'.DB_PREFIX.'quantity_cache` SET `uuid` = "' . $data["uuid"] . '", `name` = "' . $data["name"] . '"');  
+      return true;
+    }
+
+    //удаляем с базы кэш остатки
+     public function delquantityCache(){
+        $this->db->query('DELETE  FROM `'.DB_PREFIX.'quantity_cache`');
+
+        return true;
+    }
+    
+
+
  
-    //тестовый запрос
+    //статус ордеров
     public function statusOrder($data){
         $query = $this->db->query("SELECT order_id FROM `" . DB_PREFIX . "order` WHERE `order_status_id` = " . $data . "");
 

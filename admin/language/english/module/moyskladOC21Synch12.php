@@ -19,6 +19,7 @@ $_['import_text']		= 'Import product in your shop';
 $_['import_button']		= 'Import';
 $_['download']			= 'download';
 $_['download_image']	= 'Count images';
+$_['import_quantity']	= 'Quantity products (for start please import products)';
 
 //Orders
 $_['entry_order_status_to_exchange']		= 'Orders status to exchange';

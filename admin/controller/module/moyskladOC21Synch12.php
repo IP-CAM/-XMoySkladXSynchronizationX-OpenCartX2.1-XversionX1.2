@@ -2,10 +2,21 @@
 ini_set('display_errors',1);
 error_reporting(E_ALL ^E_NOTICE);
 
+include_once "/var/www/html/xhprof/xhprof_lib/utils/xhprof_lib.php";
+include_once "/var/www/html/xhprof/xhprof_lib/utils/xhprof_runs.php";
+
+#TODO ссылка на графическую схему профилирования
+#http://localhost/xhprof/xhprof_html/callgraph.php?run=5a51413b94f7e&source=test
+
+
 class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     //храним url  МойСклад API
     public $urlAPI = "https://online.moysklad.ru/api/remap/1.1/";
+    //тут будем хранить временные массивы данных
+    public $cache_data = [];
+    //тут будем хранить временные данные о количестве
+    public $cahce_quantity = [];
 
     public function index() {
         
@@ -48,6 +59,10 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         $data['text_tab_orders'] = $this->language->get('text_tab_orders');
         $data['text_order'] = $this->language->get('text_order');
         $data['export_order'] = $this->language->get('export_order');
+
+        $data['import_quantity'] = $this->language->get('import_quantity');
+        
+
  
  
         if (isset($this->error['warning'])) {
@@ -108,6 +123,9 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
         //используем ссылку в форме для выгрузки заказов
         $data['action_get_orders'] = $this->url->link('module/moyskladOC21Synch12/getOrders', 'token=' . $this->session->data['token'], 'SSL');
+
+        //используем ссылку в форме для загрузки остатков по товарам
+        $data['action_get_quantity'] = $this->url->link('module/moyskladOC21Synch12/getQuantity', 'token=' . $this->session->data['token'], 'SSL');
 
         $data['cancel'] = $this->url->link('extension/module', 'token=' . $this->session->data['token'], 'SSL');
         
@@ -196,43 +214,69 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     //вызываем метод в форме
     public function getMethodImport(){
-        if(!empty($_POST['start'])){
+         if(!empty($_POST['start'])){
+            # Инициализируем профайлер
+            //xhprof_enable(XHPROF_FLAGS_CPU + XHPROF_FLAGS_MEMORY);
+
+            //чистим кэш остатки, что бы всегда свежие данные подгружались
+            $this->deleteQuantityCache();
 
             //по клику запускаем API МойСклад для получения всего товара
             $this->getAllProduct(0);
 
             //после завершения функции делаем редирект в модуль
             $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
-        }
 
-        return true;
+            /*
+            $xhprof_data = xhprof_disable();
+
+            $xhprof_runs = new XHProfRuns_Default();
+            $run_id = $xhprof_runs->save_run($xhprof_data, "test");
+
+            echo "http://localhost/xhprof/xhprof_html/index.php?run={$run_id}&source=test\n";
+            */
+         }
+
+         return true;
     }
   
     //получаем весь товар, что есть (рекурсия)
     public function getAllProduct($position){
         $urlProduct = $this->urlAPI."entity/product?offset=$position&limit=100";
         $products = $this->restAPIMoySklad($urlProduct,0,"GET");
-         
+ 
+
         //если дошли до конца списка то выходим из рекурсии 
         if(!empty($products["rows"])){
             
             $i = 0;
-            $data_product = [];
 
-            foreach($products["rows"] as $product){
+             foreach($products["rows"] as $product){
                 
                 //делаем провекру, что бы товар был с именем
                 if(!empty($product["name"])){
+                    $this->cache_data[] = $product;
                     
-                    //передаем uuid для проверки существует ли такой uuid в базе или нет
-                    $this->searchUUID($product["id"],$product);
                 }
 
                 ++$i;
-            }
+
+             }
+           
+              //передаем uuid для проверки существует ли такой uuid в базе или нет
+              $this->searchUUID();
+
+              //очищаем буфер данных
+              unset($this->cache_data);
+
+              //сохраняешь кэш о остатках
+              $this->setQuantityCache();
+              //очищаем буфер данных
+              unset($this->cahce_quantity);
+  
 
             //вызов рекурсии  
-            $this->getAllProduct($position+$i);
+             $this->getAllProduct($position+$i);
         
         }
         
@@ -242,93 +286,115 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
 
     //делаем поиск в таблице uuid  на id  товара.
     //Если нету то добавляем товар если есть id  товара то обновляем.
-    public function searchUUID($uuid,$mas){
-        
+    public function searchUUID(){
         //получаем доступ к модели модуля
         $this->load->model('tool/moyskladOC21Synch12');
-        $findUUID = $this->model_tool_moyskladOC21Synch12->modelSearchUUID($uuid);
 
-        //проверяем есть ли картинка
-        if(!empty($mas["image"]["meta"]["href"])){
+        //формируем массив для хранения данных товаров
+        $dat = $this->cache_data;
+
+        //очищаем буфер данных
+        unset($this->cache_data);
+
+        $data = [];
+
+        foreach ($dat as $mas){
+        
+            $findUUID = $this->model_tool_moyskladOC21Synch12->modelSearchUUID($mas["id"]);
+
+            //проверяем есть ли картинка
+            if(!empty($mas["image"]["meta"]["href"])){
+                
+                //заносим в массив данные о картинке (имя, ссылка)
+                $image_data = [
+                    "name_image"    =>  $mas["image"]["filename"],
+                    "image_url"     =>  $mas["image"]["meta"]["href"]
+                ];
+
+                //добавляем инфу о кэше в базу
+                $this->model_tool_moyskladOC21Synch12->addImagCache($image_data);
+
+                $image =  'catalog/moysklad/'.$image_data["name_image"];
+
+            }else{
+                $image = "";
+            }
             
-            //заносим в массив данные о картинке (имя, ссылка)
-            $image_data = [
-                "name_image"    =>  $mas["image"]["filename"],
-                "image_url"     =>  $mas["image"]["meta"]["href"]
+            
+            //проверяем существует ли цена продажи
+            if(!empty($mas['salePrices'][0]['value'])){
+          $price = number_format($mas['salePrices'][0]['value']/100, 2, '.', '');
+            
+            }else{
+          $price = 0;
+            }
+     
+            $data[] = [
+                'findUUID'              =>  (!empty($findUUID['product_id'])) ? 
+                                            $findUUID['product_id'] : 0,
+                'model'                 =>  "",
+                'sku'                   =>  "",
+                'upc'                   =>  "",
+                'ean'                   =>  "",
+                'jan'                   =>  "",
+                'isbn'                  =>  "",
+                'mpn'                   =>  "",
+                'location'              =>  "",
+                'quantity'              =>  0,
+                'minimum'               =>  "",
+                'subtract'              =>  "",
+                'stock_status_id'       =>  "",
+                'date_available'        =>  "",
+                'manufacturer_id'       =>  "",
+                'shipping'              =>  "",
+                'price'                 =>  $price,
+                'points'                =>  "",
+                'weight'                =>  (!empty($mas['weight'])) ? $mas['weight']: 0,
+                'weight_class_id'       =>  "",
+                'length'                =>  "",
+                'width'                 =>  "",
+                'height'                =>  "",
+                'length_class_id'       =>  "",
+                'status'                =>  1,
+                'tax_class_id'          =>  "",
+                'sort_order'            =>  "",
+                'image'                 =>  $image,
+                'product_description'   =>  [
+                    $this->config->get('config_language_id') =>[
+                        'name'          => $mas['name'],
+                        'description'   => (!empty($mas['description'])) ? $mas['description']: " ",
+                        'tag'           =>  "",
+                        'meta_title'    =>  "",
+                        'meta_description'  =>  "",
+                        'meta_keyword'  =>  "",
+                    ],
+                ],
+                'product_store'     =>[
+                    'store_id'          => $this->config->get('config_store_id'),
+                ],
+                
+                'uuid'                  =>  $mas["id"],
+                'uuid_url'              =>  $mas['meta']['href'],
+                'keyword'               =>  "",
+     
+
             ];
 
-            //добавляем инфу о кэше в базу
-            $this->model_tool_moyskladOC21Synch12->addImagCache($image_data);
+            //сохраняем временные данные о количестве
+            $this->cahce_quantity[] = [
+                'uuid'  => $mas["id"],
+                'name'  => $mas['name'],
+            ];
 
-            $image =  'catalog/moysklad/'.$image_data["name_image"];
-
-        }else{
-            $image = "";
-        }
-        
-        
-        //проверяем существует ли цена продажи
-        if(!empty($mas['salePrices'][0]['value'])){
-      $price = number_format($mas['salePrices'][0]['value']/100, 2, '.', '');
-        
-        }else{
-      $price = 0;
         }
  
-        $data = [
-            'model'                 =>  "",
-            'sku'                   =>  "",
-            'upc'                   =>  "",
-            'ean'                   =>  "",
-            'jan'                   =>  "",
-            'isbn'                  =>  "",
-            'mpn'                   =>  "",
-            'location'              =>  "",
-            'quantity'              =>  (!empty($this->getQuantity($mas['name']))) ? $this->getQuantity($mas['name']): 0,
-            'minimum'               =>  "",
-            'subtract'              =>  "",
-            'stock_status_id'       =>  "",
-            'date_available'        =>  "",
-            'manufacturer_id'       =>  "",
-            'shipping'              =>  "",
-            'price'                 =>  $price,
-            'points'                =>  "",
-            'weight'                =>  (!empty($mas['weight'])) ? $mas['weight']: 0,
-            'weight_class_id'       =>  "",
-            'length'                =>  "",
-            'width'                 =>  "",
-            'height'                =>  "",
-            'length_class_id'       =>  "",
-            'status'                =>  1,
-            'tax_class_id'          =>  "",
-            'sort_order'            =>  "",
-            'image'                 =>  $image,
-            'product_description'   =>  [
-                $this->config->get('config_language_id') =>[
-                    'name'          => $mas['name'],
-                    'description'   => (!empty($mas['description'])) ? $mas['description']: " ",
-                    'tag'           =>  "",
-                    'meta_title'    =>  "",
-                    'meta_description'  =>  "",
-                    'meta_keyword'  =>  "",
-                ],
-            ],
-            'product_store'     =>[
-                'store_id'          => $this->config->get('config_store_id'),
-            ],
-            
-            'uuid'                  =>  $uuid,
-            'uuid_url'              =>  $mas['meta']['href'],
-            'keyword'               =>  "",
- 
-
-        ];
-
-        //если нашли id товара то update, если нет то insert
-        if(!empty($findUUID)){
-            $this->updateProduct($findUUID,$data);
-        }else{
-            $this->insertProduct($data);
+        foreach($data as $cache){
+            //если нашли id товара то update, если нет то insert
+            if(!empty($cache['findUUID'])){
+                 $this->updateProduct($cache['findUUID'],$cache);
+            }else{
+                 $this->insertProduct($cache);
+            }
         }
         
         return true;
@@ -435,15 +501,65 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
     }
 
     //получаем количество доступного товара в "Остатках"
-    public function getQuantity($name){
-        $jsonAnswerServer = $this->restAPIMoySklad($this->urlAPI."entity/assortment?filter=name=".urlencode($name),0,"GET");
+    public function getQuantity(){
+        //получаем доступ к модели модуля
+        $this->load->model('tool/moyskladOC21Synch12');
 
-        //формируем результат по столбцу "Доступно" в моем складе
-        $quantity = $jsonAnswerServer['rows'][0]['quantity'];
-        return $quantity;
+        if(!empty($_POST['start'])){
+
+            $getProductQuantity = $this->model_tool_moyskladOC21Synch12->getquantityCache();
+
+            //проверяем есть ли кэш остатки
+            if(!empty($getProductQuantity)){
+                foreach ($getProductQuantity as $data){
+                    $findUUID = $this->model_tool_moyskladOC21Synch12->modelSearchUUID($data["uuid"]);
+
+                    //проверяем существует ли такой товар в базе
+                    if(!empty($findUUID['product_id'])){
+                        $jsonAnswerServer = $this->restAPIMoySklad($this->urlAPI."entity/assortment?filter=name=".urlencode($data['name']),0,"GET");
+                        
+                        //формируем результат по столбцу "Доступно" в моем складе
+                        $quantity = (!empty($jsonAnswerServer['rows'][0]['quantity'])) ? $jsonAnswerServer['rows'][0]['quantity'] : 0;
+                        
+                        $this->model_tool_moyskladOC21Synch12->updateProductQuantity($findUUID['product_id'],$quantity);
+     
+                    }
+                }
+
+            }
+
+            //чистим кэш остатки
+            $this->deleteQuantityCache();
+
+            //после завершения функции делаем редирект в модуль
+            $this->response->redirect($this->url->link('module/moyskladOC21Synch12', 'token=' . $this->session->data['token'], 'SSL'));
+        }
+        
+         return true;
  
     }
- 
+    
+    //заносим кэш "Остаток в базу"    
+    public function setQuantityCache(){
+        //получаем доступ к модели модуля
+        $this->load->model('tool/moyskladOC21Synch12');
+        
+        //заносим в базу кэш об остатках
+        foreach($this->cahce_quantity as $data){
+            $this->model_tool_moyskladOC21Synch12->setquantityCache($data);
+        }
+
+        return true;
+    }
+
+    //очистка кэша остатки
+    public function deleteQuantityCache(){
+        //получаем доступ к модели модуля
+        $this->load->model('tool/moyskladOC21Synch12');
+        $this->model_tool_moyskladOC21Synch12->delquantityCache();
+
+         return true;
+    }
 
     //выгружаем все заказы в мойсклад
     public function getOrders(){
@@ -472,14 +588,13 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         foreach ($orders as $orders_data){
             //получаем по ордер ид всю инфу о ордере
             $order = $this->model_sale_order->getOrder($orders_data['order_id']);
-            $name_client = (!empty($order['firstname']) ? $order['firstname'] : ""." ".(!empty($order['lastname']) ? $order['lastname'] : "";
 
             //получаем ссылку на контрагента
-            $urlSearchAgent = $this->model_tool_moyskladOC21Synch12->searchContrAgent(htmlspecialchars($name_client)); 
+            $urlSearchAgent = $this->model_tool_moyskladOC21Synch12->searchContrAgent(htmlspecialchars($order['firstname']." ".$order['lastname'])); 
 
             //формируем нужный нам массив для создания контрагента
             $new_contr_agent = [
-                "name"          =>  $name_client,
+                "name"          =>  $order['firstname']." ".$order['lastname'],
                 "email"         =>  (!empty($order['email'])) ? $order['email'] : "",
                 "phone"         =>  (!empty($order['telephone'])) ? $order['telephone'] : "",
                 "actualAddress" =>  (!empty($order['payment_address_1'])) ? $order['payment_address_1'] : "",
@@ -570,6 +685,11 @@ class ControllermodulemoyskladOC21Synch12 extends Controller {
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);  
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_USERPWD, $this->dataClient()['login'].":".$this->dataClient()['pass']);
+        curl_setopt ($ch, CURLOPT_USERAGENT, $_SERVER['HTTP_USER_AGENT']);
+
+        // Only calling the head
+        curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1); // ADD THIS
+
 
         if(!empty($data)){
             curl_setopt($ch, CURLOPT_HTTPHEADER, array(

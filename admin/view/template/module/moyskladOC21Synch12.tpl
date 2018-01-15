@@ -80,7 +80,17 @@ error_reporting(E_ALL ^E_NOTICE);
                 <button type="submit" class="btn btn-primary" style="margin-left: 30px;" onclick="anime()"><?php echo $download;?></button>
               </form>
               </td>
-             </tr>    
+             </tr> 
+             <tr>
+               <td>
+                 <form action="<?php echo $action_get_quantity; ?>" method="post" enctype="multipart/form-data"  class="form-inline">
+                  <div class="form-group">
+                    <span><?php echo $import_quantity; ?></span>
+                  </div>
+                <button type="submit" name="start" value="true" class="btn btn-primary importProduct" style="margin-left: 30px;" onclick="anime()"><?php echo $import_button; ?></button>
+                </form>
+               </td>
+             </tr>   
           </table> 
         </div>
         <div id="tab-orders">
